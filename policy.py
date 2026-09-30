@@ -2,16 +2,14 @@ from retriever import Retriever
 from npc import NPC
 from personality import Personality
 from memory import Memory
+import numpy as np
 
 class Policy:
-    def __init__(self, npc):
+    def __init__(self, npc, embedding_model):
         self.npc = npc
+        self.embedding_model = embedding_model
 
-    def decide(self, query, memories):
-        retriever = Retriever(memories)
-        relevant_memories = retriever.retrieve(query)
-        # print(relevant_memories)
-        # For simplicity, we will just return the content of the most relevant memory
+    def decide(self, query, relevant_memories):
         if not relevant_memories:
             return "DEFLECT"
         if self._question_touches_secret(query, relevant_memories) == True:
@@ -23,25 +21,95 @@ class Policy:
         print("The question does not touch a secret.")
         return "TRUTH"
         
-    def _question_touches_secret(self, query, relevant_memories):
-        query_words = set(query.lower().split())
+    import numpy as np
 
-        for memory, score in relevant_memories:
 
-            secret_words = set(memory.content.lower().split())
+class Policy:
 
-            overlap = query_words & secret_words
+    def __init__(self, npc, embedding_model):
+        self.npc = npc
+        self.embedding_model = embedding_model
 
-            if not overlap:
-                continue
+    def decide(self, query, relevant_memories):
 
-            ratio = len(overlap) / len(secret_words)
+        # 没有相关记忆
+        if not relevant_memories:
+            return "DEFLECT"
 
-            # print("Memory:", memory.content)
-            # print("Overlap:", overlap)
-            print("Overlap ratio:", ratio)
+        # 判断问题是否触及秘密
+        if self._question_touches_secret(query):
 
-            if ratio >= 0.3:
+            print("The question touches a secret.")
+
+            if self.npc.personality.honesty >= 0.8:
+                return "OMIT"
+            else:
+                return "LIE"
+
+        print("The question does not touch a secret.")
+
+        return "TRUTH"
+
+
+    def _question_touches_secret(self, query):
+
+        # 没有 secret
+        if not self.npc.secrets:
+            return False
+
+        # Query embedding
+        query_embedding = self.embedding_model.encode([query])
+
+        query_embedding = np.asarray(
+            query_embedding,
+            dtype="float32"
+        )
+
+        # Secret embeddings
+        secret_embeddings = self.embedding_model.encode(
+            self.npc.secrets
+        )
+
+        secret_embeddings = np.asarray(
+            secret_embeddings,
+            dtype="float32"
+        )
+
+        # Normalize
+        query_embedding = query_embedding / (
+            np.linalg.norm(
+                query_embedding,
+                axis=1,
+                keepdims=True
+            ) + 1e-8
+        )
+
+        secret_embeddings = secret_embeddings / (
+            np.linalg.norm(
+                secret_embeddings,
+                axis=1,
+                keepdims=True
+            ) + 1e-8
+        )
+
+        # Cosine similarity
+        similarities = np.dot(
+            query_embedding,
+            secret_embeddings.T
+        )[0]
+
+        for secret, similarity in zip(
+            self.npc.secrets,
+            similarities
+        ):
+
+            print(
+                f"Secret similarity: "
+                f"{similarity:.4f} | "
+                f"{secret}"
+            )
+
+            if similarity >= 0.5:
                 return True
 
         return False
